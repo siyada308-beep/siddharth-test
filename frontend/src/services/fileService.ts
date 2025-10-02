@@ -1,10 +1,11 @@
 import axios from 'axios';
-import { File as FileType } from '../types/file';
+import { File as FileType, StorageStats } from '../types/file';
+import { FilterOptions } from '../components/SearchFilter';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
 export const fileService = {
-  async uploadFile(file: File): Promise<FileType> {
+  async uploadFile(file: File): Promise<{ file: FileType; is_duplicate: boolean; message: string; space_saved?: number }> {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -16,8 +17,19 @@ export const fileService = {
     return response.data;
   },
 
-  async getFiles(): Promise<FileType[]> {
-    const response = await axios.get(`${API_URL}/files/`);
+  async getFiles(filters?: FilterOptions): Promise<FileType[]> {
+    const params = new URLSearchParams();
+    
+    if (filters) {
+      if (filters.search) params.append('search', filters.search);
+      if (filters.fileType) params.append('file_type', filters.fileType);
+      if (filters.minSize) params.append('min_size', filters.minSize);
+      if (filters.maxSize) params.append('max_size', filters.maxSize);
+      if (filters.dateFrom) params.append('date_from', filters.dateFrom);
+      if (filters.dateTo) params.append('date_to', filters.dateTo);
+    }
+
+    const response = await axios.get(`${API_URL}/files/?${params.toString()}`);
     return response.data;
   },
 
@@ -46,4 +58,19 @@ export const fileService = {
       throw new Error('Failed to download file');
     }
   },
-}; 
+
+  async getStorageStats(): Promise<StorageStats> {
+    const response = await axios.get(`${API_URL}/files/storage_stats/`);
+    return response.data;
+  },
+
+  async getFileTypes(): Promise<{ file_types: string[] }> {
+    const response = await axios.get(`${API_URL}/files/file_types/`);
+    return response.data;
+  },
+
+  async getFileReferences(fileId: string): Promise<{ original_file: FileType; references: any[]; total_references: number }> {
+    const response = await axios.get(`${API_URL}/files/${fileId}/references/`);
+    return response.data;
+  },
+};

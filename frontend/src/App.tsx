@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { FileList } from './components/FileList';
+import { StorageStats } from './components/StorageStats';
 
 function App() {
   const [refreshKey, setRefreshKey] = useState(0);
@@ -15,16 +16,22 @@ function App() {
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900">Abnormal Security - File Hub</h1>
           <p className="mt-1 text-sm text-gray-500">
-            File management system
+            File management system with deduplication and advanced search
           </p>
         </div>
       </header>
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
           <div className="space-y-6">
+            {/* Storage Statistics */}
+            <StorageStats key={refreshKey} />
+            
+            {/* File Upload */}
             <div className="bg-white shadow sm:rounded-lg">
               <FileUpload onUploadSuccess={handleUploadSuccess} />
             </div>
+            
+            {/* File List with Search and Filters */}
             <div className="bg-white shadow sm:rounded-lg">
               <FileList key={refreshKey} />
             </div>

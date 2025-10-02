@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { fileService } from '../services/fileService';
-import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
+import { CloudArrowUpIcon, CheckCircleIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface FileUploadProps {
@@ -10,15 +10,32 @@ interface FileUploadProps {
 export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ 
+    message: string; 
+    isDuplicate: boolean; 
+    spaceSaved?: number 
+  } | null>(null);
   const queryClient = useQueryClient();
 
   const uploadMutation = useMutation({
     mutationFn: fileService.uploadFile,
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Invalidate and refetch files query
       queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['storageStats'] });
+      queryClient.invalidateQueries({ queryKey: ['fileTypes'] });
+      
+      setUploadResult({
+        message: data.message,
+        isDuplicate: data.is_duplicate,
+        spaceSaved: data.space_saved,
+      });
+      
       setSelectedFile(null);
       onUploadSuccess();
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setUploadResult(null), 5000);
     },
     onError: (error) => {
       setError('Failed to upload file. Please try again.');
@@ -30,6 +47,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
     if (event.target.files && event.target.files[0]) {
       setSelectedFile(event.target.files[0]);
       setError(null);
+      setUploadResult(null);
     }
   };
 
@@ -41,6 +59,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
 
     try {
       setError(null);
+      setUploadResult(null);
       await uploadMutation.mutateAsync(selectedFile);
     } catch (err) {
       // Error handling is done in onError callback
@@ -76,16 +95,45 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
             <p className="text-xs text-gray-500">Any file up to 10MB</p>
           </div>
         </div>
+        
         {selectedFile && (
-          <div className="text-sm text-gray-600">
-            Selected: {selectedFile.name}
+          <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+            <strong>Selected:</strong> {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
           </div>
         )}
+        
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
+          <div className="text-sm text-red-600 bg-red-50 p-3 rounded border border-red-200">
             {error}
           </div>
         )}
+        
+        {uploadResult && (
+          <div className={`text-sm p-3 rounded border ${
+            uploadResult.isDuplicate 
+              ? 'bg-blue-50 text-blue-800 border-blue-200' 
+              : 'bg-green-50 text-green-800 border-green-200'
+          }`}>
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                {uploadResult.isDuplicate ? (
+                  <DocumentDuplicateIcon className="h-5 w-5 text-blue-600" />
+                ) : (
+                  <CheckCircleIcon className="h-5 w-5 text-green-600" />
+                )}
+              </div>
+              <div className="ml-3">
+                <p className="font-medium">{uploadResult.message}</p>
+                {uploadResult.isDuplicate && uploadResult.spaceSaved && (
+                  <p className="mt-1 text-xs">
+                    Space saved: {(uploadResult.spaceSaved / 1024).toFixed(2)} KB
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
         <button
           onClick={handleUpload}
           disabled={!selectedFile || uploadMutation.isPending}
@@ -126,4 +174,4 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
       </div>
     </div>
   );
-}; 
+};

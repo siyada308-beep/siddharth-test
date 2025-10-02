@@ -1,16 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { fileService } from '../services/fileService';
 import { File as FileType } from '../types/file';
-import { DocumentIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { DocumentIcon, TrashIcon, ArrowDownTrayIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { SearchFilter, FilterOptions } from './SearchFilter';
 
 export const FileList: React.FC = () => {
   const queryClient = useQueryClient();
+  const [filters, setFilters] = useState<FilterOptions>({
+    search: '',
+    fileType: '',
+    minSize: '',
+    maxSize: '',
+    dateFrom: '',
+    dateTo: '',
+  });
 
-  // Query for fetching files
+  // Query for fetching file types
+  const { data: fileTypesData } = useQuery({
+    queryKey: ['fileTypes'],
+    queryFn: fileService.getFileTypes,
+  });
+
+  // Query for fetching files with filters
   const { data: files, isLoading, error } = useQuery({
-    queryKey: ['files'],
-    queryFn: fileService.getFiles,
+    queryKey: ['files', filters],
+    queryFn: () => fileService.getFiles(filters),
   });
 
   // Mutation for deleting files
@@ -18,6 +33,7 @@ export const FileList: React.FC = () => {
     mutationFn: fileService.deleteFile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['storageStats'] });
     },
   });
 
@@ -28,10 +44,12 @@ export const FileList: React.FC = () => {
   });
 
   const handleDelete = async (id: string) => {
-    try {
-      await deleteMutation.mutateAsync(id);
-    } catch (err) {
-      console.error('Delete error:', err);
+    if (window.confirm('Are you sure you want to delete this file?')) {
+      try {
+        await deleteMutation.mutateAsync(id);
+      } catch (err) {
+        console.error('Delete error:', err);
+      }
     }
   };
 
@@ -41,6 +59,10 @@ export const FileList: React.FC = () => {
     } catch (err) {
       console.error('Download error:', err);
     }
+  };
+
+  const handleFilterChange = (newFilters: FilterOptions) => {
+    setFilters(newFilters);
   };
 
   if (isLoading) {
@@ -85,15 +107,30 @@ export const FileList: React.FC = () => {
     );
   }
 
+  const fileTypes = fileTypesData?.file_types || [];
+
   return (
     <div className="p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Uploaded Files</h2>
+      
+      {/* Search and Filter */}
+      <SearchFilter onFilterChange={handleFilterChange} fileTypes={fileTypes} />
+
+      {/* Results Count */}
+      {files && files.length > 0 && (
+        <div className="mt-4 text-sm text-gray-600">
+          Found {files.length} file{files.length !== 1 ? 's' : ''}
+        </div>
+      )}
+
       {!files || files.length === 0 ? (
-        <div className="text-center py-12">
+        <div className="text-center py-12 mt-6">
           <DocumentIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No files</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No files found</h3>
           <p className="mt-1 text-sm text-gray-500">
-            Get started by uploading a file
+            {Object.values(filters).some(v => v !== '') 
+              ? 'Try adjusting your search or filters'
+              : 'Get started by uploading a file'}
           </p>
         </div>
       ) : (
@@ -103,24 +140,44 @@ export const FileList: React.FC = () => {
               <li key={file.id} className="py-4">
                 <div className="flex items-center space-x-4">
                   <div className="flex-shrink-0">
-                    <DocumentIcon className="h-8 w-8 text-gray-400" />
+                    <div className="relative">
+                      <DocumentIcon className="h-8 w-8 text-gray-400" />
+                      {file.reference_count > 1 && (
+                        <div className="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs font-bold">
+                          {file.reference_count}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {file.original_filename}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {file.original_filename}
+                      </p>
+                      {file.is_duplicate && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <DocumentDuplicateIcon className="h-3 w-3 mr-1" />
+                          Deduplicated
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">
                       {file.file_type} • {(file.size / 1024).toFixed(2)} KB
                     </p>
                     <p className="text-sm text-gray-500">
                       Uploaded {new Date(file.uploaded_at).toLocaleString()}
                     </p>
+                    {file.reference_count > 1 && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        {file.reference_count - 1} duplicate{file.reference_count > 2 ? 's' : ''} detected
+                      </p>
+                    )}
                   </div>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => handleDownload(file.file, file.original_filename)}
                       disabled={downloadMutation.isPending}
-                      className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                      className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
                     >
                       <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
                       Download
@@ -128,7 +185,7 @@ export const FileList: React.FC = () => {
                     <button
                       onClick={() => handleDelete(file.id)}
                       disabled={deleteMutation.isPending}
-                      className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                      className="inline-flex items-center px-3 py-2 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
                     >
                       <TrashIcon className="h-4 w-4 mr-1" />
                       Delete
@@ -142,4 +199,4 @@ export const FileList: React.FC = () => {
       )}
     </div>
   );
-}; 
+};
